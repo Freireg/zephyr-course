@@ -1,50 +1,44 @@
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
 
-LOG_MODULE_REGISTER(sched_demo, LOG_LEVEL_INF);
+LOG_MODULE_REGISTER(sync_demo, LOG_LEVEL_INF);
 
 #define STACK_SIZE 1024
 
-static void t_low_fn(void *a, void *b, void *c)
-{
-	while (1) {
-		LOG_INF("T_LOW running");
-		k_msleep(300);
-	}
-}
+K_MUTEX_DEFINE(mutex);
+static uint32_t shared_counter = 0;
 
-static void t_med_fn(void *a, void *b, void *c)
+static void t_first_fn(void *a, void *b, void *c)
 {
 	while (1) {
-		LOG_INF("T_MED running");
-		k_msleep(200);
-	}
-}
-
-static void t_high_fn(void *a, void *b, void *c)
-{
-	while (1) {
-		LOG_INF("T_HIGH running");
-		k_msleep(100);
-	}
-}
-
-static void t_coop_fn(void *a, void *b, void *c)
-{
-	while (1) {
-		for (int i = 0; i < 5; i++) {
-			LOG_INF("T_COOP busy %d/5", i + 1);
-			k_busy_wait(1000);
-		}
-		LOG_INF("T_COOP yield");
+		k_mutex_lock(&mutex, K_FOREVER);
+		LOG_INF("First thread acquired the mutex!");
+		uint32_t local = shared_counter;
+		LOG_INF("First thread sees counter as: %d", local);
 		k_yield();
+		shared_counter = local + 1;
+		k_mutex_unlock(&mutex);
+		// k_msleep(10);
 	}
 }
 
-K_THREAD_DEFINE(t_low, STACK_SIZE, t_low_fn, NULL, NULL, NULL, 7, 0, 0);
-K_THREAD_DEFINE(t_med, STACK_SIZE, t_med_fn, NULL, NULL, NULL, 5, 0, 0);
-K_THREAD_DEFINE(t_high, STACK_SIZE, t_high_fn, NULL, NULL, NULL, 3, 0, 0);
-K_THREAD_DEFINE(t_coop, STACK_SIZE, t_coop_fn, NULL, NULL, NULL, -1, 0, 2000);
+static void t_second_fn(void *a, void *b, void *c)
+{
+	while (1) {
+		k_mutex_lock(&mutex, K_FOREVER);
+		LOG_INF("Second thread acquired the mutex!");
+		uint32_t local = shared_counter;
+		LOG_INF("Second thread sees counter as: %d", local);
+		k_yield();
+		shared_counter = local + 1;
+		k_mutex_unlock(&mutex);
+		// k_msleep(10);
+	}
+}
+
+
+K_THREAD_DEFINE(t_first, STACK_SIZE, t_first_fn, NULL, NULL, NULL, 5, 0, 0);
+K_THREAD_DEFINE(t_second, STACK_SIZE, t_second_fn, NULL, NULL, NULL, 5, 0, 0);
 
 int main(void)
 {
